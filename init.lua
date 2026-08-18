@@ -389,9 +389,9 @@ do
       comments = { italic = false }, -- Disable italics in comments
     },
   }
-  
+
   vim.pack.add { gh 'ellisonleao/gruvbox.nvim' }
-  require('gruvbox').setup()
+  require('gruvbox').setup {}
 
   -- Load the colorscheme here.
   -- Like many other themes, this one has different styles, and you could load
@@ -693,12 +693,18 @@ do
   -- Enable the following language servers
   --  Feel free to add/remove any LSPs that you want here. They will automatically be installed.
   --  See `:help lsp-config` for information about keys and how to configure
+  --
+  -- To add a language: add one entry below - key = server name (see
+  -- `:help lspconfig-all`), value = its config, `{}` for defaults. Mason then
+  -- installs it automatically, because `ensure_installed` below is built from
+  -- these keys. The other two levers, both further down:
+  --   * `system_provided` - opt a server out of Mason and use the binary
+  --     already on your PATH (that's how rust_analyzer and clangd work here)
+  --   * `vim.list_extend(ensure_installed, {...})` - extra tools that are not
+  --     language servers, e.g. the `stylua` formatter
   ---@type table<string, vim.lsp.Config>
   local servers = {
-    -- clangd = {},
     -- gopls = {},
-    -- pyright = {},
-    -- rust_analyzer = {},
     --
     -- Some languages (like typescript) have entire language plugins that can be useful:
     --    https://github.com/pmizio/typescript-tools.nvim
@@ -706,7 +712,50 @@ do
     -- But for many setups, the LSP (`ts_ls`) will work just fine
     -- ts_ls = {},
 
-    stylua = {}, -- Used to format Lua code
+    -- [[ C / C++ ]]
+    -- NOTE: clangd only understands your build flags if it can find a compilation
+    -- database. Generate one with any of:
+    --   cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ...   (compile_commands.json)
+    --   bear -- make                                    (for plain Makefiles)
+    --   echo '-std=c17 -Wall' > compile_flags.txt       (single-flag-set projects)
+    -- Without one, includes in a multi-file project will report bogus errors.
+    clangd = {
+      -- `--header-insertion=never` stops clangd from adding #includes for you
+      -- on completion; drop that flag if you want the automatic includes.
+      cmd = { 'clangd', '--background-index', '--clang-tidy', '--header-insertion=never' },
+    },
+
+    -- [[ Python ]]
+    -- Two servers on purpose: `pyright` for types/navigation, `ruff` for
+    -- lint diagnostics, quick fixes and formatting.
+    pyright = {
+      settings = {
+        pyright = { disableOrganizeImports = true }, -- ruff sorts imports
+        python = { analysis = { typeCheckingMode = 'basic' } },
+      },
+    },
+    -- NOTE: ruff only attaches inside a project (a dir with `pyproject.toml`,
+    -- `ruff.toml`, `.ruff.toml` or `.git`); a stray script in a bare directory
+    -- gets pyright only, which falls back to the cwd. Give ruff a `root_dir`
+    -- function here if you want it to attach everywhere too.
+    ruff = {
+      on_attach = function(client)
+        client.server_capabilities.hoverProvider = false -- let pyright own hover
+      end,
+    },
+
+    -- [[ Rust ]]
+    -- Uses the `rust-analyzer` from your rustup toolchain (see the note in
+    -- `ensure_installed` below). Needs `rustup component add rust-src` for
+    -- go-to-definition into the standard library.
+    rust_analyzer = {
+      settings = {
+        ['rust-analyzer'] = {
+          cargo = { features = 'all' }, -- first knob to turn if a project with mutually exclusive features misbehaves
+          check = { command = 'clippy' }, -- `rustup component add clippy`
+        },
+      },
+    },
 
     -- Special Lua Config, as recommended by neovim help docs
     lua_ls = {
@@ -766,7 +815,16 @@ do
   local ensure_installed = vim.tbl_keys(servers or {})
   vim.list_extend(ensure_installed, {
     -- You can add other tools here that you want Mason to install
+    'stylua', -- Used to format Lua code
   })
+
+  -- Servers we'd rather take from the system toolchain than from Mason.
+  --  - rust_analyzer: rustup ships the build matched to your toolchain; Mason's
+  --    standalone build can mismatch the proc-macro ABI.
+  --    Install with `rustup component add rust-analyzer`.
+  --  - clangd: comes with your clang/LLVM install, so it matches your compiler.
+  local system_provided = { 'rust_analyzer', 'clangd' }
+  ensure_installed = vim.tbl_filter(function(tool) return not vim.tbl_contains(system_provided, tool) end, ensure_installed)
 
   require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
@@ -786,25 +844,36 @@ do
   require('conform').setup {
     notify_on_error = false,
     format_on_save = function(bufnr)
-      -- You can specify filetypes to autoformat on save here:
+      -- Filetypes that get formatted automatically on `:w`.
+      -- Add a line here to opt another language in.
       local enabled_filetypes = {
-        -- lua = true,
-        -- python = true,
+        lua = true,
+        python = true,
+        c = true,
+        cpp = true,
+        rust = true,
       }
-      if enabled_filetypes[vim.bo[bufnr].filetype] then
-        return { timeout_ms = 500 }
-      else
-        return nil
-      end
+      if not enabled_filetypes[vim.bo[bufnr].filetype] then return nil end
+
+      -- Escape hatch: `:FormatDisable` for this session (`:FormatDisable!` for
+      -- just this buffer), `:FormatEnable` to turn it back on.
+      if vim.g.disable_autoformat or vim.b[bufnr].disable_autoformat then return nil end
+
+      -- clangd/rust_analyzer format over LSP and can be slow on a cold start,
+      -- so this is more generous than conform's default.
+      return { timeout_ms = 1000 }
     end,
     default_format_opts = {
       lsp_format = 'fallback', -- Use external formatters if configured below, otherwise use LSP formatting. Set to `false` to disable LSP formatting entirely.
     },
     -- You can also specify external formatters in here.
     formatters_by_ft = {
-      -- rust = { 'rustfmt' },
-      -- Conform can also run multiple formatters sequentially
-      -- python = { "isort", "black" },
+      -- C and Rust need no entry here: clangd and rust_analyzer both format
+      -- over LSP, which `lsp_format = 'fallback'` above already uses.
+      lua = { 'stylua' }, -- lua_ls has formatting disabled in Section 6, so name stylua explicitly
+      python = { 'ruff_format' },
+      -- Conform can also run multiple formatters sequentially, e.g.
+      -- python = { 'ruff_organize_imports', 'ruff_format' },
       --
       -- You can use 'stop_after_first' to run the first available formatter from the list
       -- javascript = { "prettierd", "prettier", stop_after_first = true },
@@ -812,6 +881,21 @@ do
   }
 
   vim.keymap.set({ 'n', 'v' }, '<leader>f', function() require('conform').format { async = true } end, { desc = '[F]ormat buffer' })
+
+  -- Turn format-on-save off when you need to save something unformatted.
+  --  `:FormatDisable` for the session, `:FormatDisable!` for the current buffer only.
+  vim.api.nvim_create_user_command('FormatDisable', function(args)
+    if args.bang then
+      vim.b.disable_autoformat = true
+    else
+      vim.g.disable_autoformat = true
+    end
+  end, { desc = 'Disable format-on-save (bang: current buffer only)', bang = true })
+
+  vim.api.nvim_create_user_command('FormatEnable', function()
+    vim.b.disable_autoformat = false
+    vim.g.disable_autoformat = false
+  end, { desc = 'Re-enable format-on-save' })
 end
 
 -- ============================================================
@@ -910,7 +994,7 @@ do
   vim.pack.add { { src = gh 'nvim-treesitter/nvim-treesitter', version = 'main' } }
 
   -- Ensure basic parsers are installed
-  local parsers = { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc' }
+  local parsers = { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'python', 'query', 'rust', 'toml', 'vim', 'vimdoc' }
   require('nvim-treesitter').install(parsers)
 
   ---@param buf integer
@@ -976,7 +1060,7 @@ do
   -- require 'kickstart.plugins.indent_line'
   -- require 'kickstart.plugins.lint'
   -- require 'kickstart.plugins.autopairs'
-  -- require 'kickstart.plugins.neo-tree'
+  require 'kickstart.plugins.neo-tree'
   -- require 'kickstart.plugins.gitsigns' -- adds gitsigns recommended keymaps
 
   -- NOTE: You can add your own plugins, configuration, etc from `lua/custom/plugins/*.lua`
