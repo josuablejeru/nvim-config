@@ -8,9 +8,10 @@ vim.pack.add {
   'https://github.com/nvim-tree/nvim-web-devicons',
 }
 
-vim.keymap.set('n', '\\', '<Cmd>Neotree reveal<CR>', { desc = 'NeoTree reveal', silent = true })
+vim.keymap.set('n', '<leader>e', '<Cmd>Neotree reveal<CR>', { desc = 'NeoTree reveal', silent = true })
 
 require('neo-tree').setup {
+  close_if_last_window = false,
   enable_git_status = true,
   filesystem = {
     filtered_items = {
@@ -19,7 +20,7 @@ require('neo-tree').setup {
     },
     window = {
       mappings = {
-        ['\\'] = 'close_window',
+        ['q'] = 'close_window',
       },
     },
   },
