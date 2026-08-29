@@ -171,6 +171,36 @@ do
   -- instead raise a dialog asking if you wish to save the current file(s)
   -- See `:help 'confirm'`
   vim.o.confirm = true
+
+  -- [[ Spell checking ]]
+  -- Check both English and German at once, so mixed-language notes work without switching.
+  -- Missing `.spl` files are downloaded automatically on first use, see `:help spellfile.vim`.
+  -- See `:help 'spelllang'`
+  vim.o.spelllang = 'en_us,de_de'
+
+  -- `camel` splits camelCase/PascalCase words before checking them, so identifiers in
+  -- code comments are not flagged wholesale.
+  --
+  -- `noplainbuffer` is what makes always-on spell checking bearable: a buffer is only
+  -- checked when it has syntax highlighting or extmarks, and then only in the regions
+  -- designated as spellable. In practice that means treesitter's `@spell` captures,
+  -- i.e. comments and prose strings, and never identifiers or keywords.
+  -- Scratch and plugin buffers have neither, so they are skipped for free.
+  -- See `:help 'spelloptions'` and `:help treesitter-highlight-spell`
+  vim.o.spelloptions = 'camel,noplainbuffer'
+
+  -- Number of suggestions offered by `z=`. See `:help 'spellsuggest'`
+  vim.o.spellsuggest = 'best,9'
+
+  -- Personal dictionary that `zg` (good word) and `zw` (wrong word) write to.
+  -- Note: `spell/` is listed in this repo's .gitignore, so these stay local.
+  local spelldir = vim.fs.joinpath(vim.fn.stdpath 'config', 'spell')
+  vim.fn.mkdir(spelldir, 'p')
+  vim.o.spellfile = vim.fs.joinpath(spelldir, 'custom.utf-8.add')
+
+  -- Spell check everything by default. New languages are covered without touching this
+  -- config; the few buffer types where it is only noise are opted out in SECTION 2.
+  vim.o.spell = true
 end
 
 -- ============================================================
@@ -251,6 +281,101 @@ do
     group = vim.api.nvim_create_augroup('kickstart-highlight-yank', { clear = true }),
     callback = function() vim.hl.on_yank() end,
   })
+
+  -- [[ Spell Checking ]]
+  -- Spell checking is on globally (see SECTION 1), so a new language is covered without
+  -- editing this config. These are the buffers where it is only noise: read-only views
+  -- and plugin UIs whose text we never author. Everything else stays checked, and any
+  -- single window can be flipped with `<leader>ts`.
+  local spell_ignore = {
+    'checkhealth',
+    'diff',
+    'git',
+    'gitrebase',
+    'help',
+    'man',
+    'neo-tree',
+    'qf',
+    'TelescopePrompt',
+  }
+
+  local spell_group = vim.api.nvim_create_augroup('kickstart-spell', { clear = true })
+
+  vim.api.nvim_create_autocmd('FileType', {
+    desc = 'Disable spell checking for read-only and plugin buffers',
+    group = spell_group,
+    pattern = spell_ignore,
+    callback = function() vim.opt_local.spell = false end,
+  })
+
+  -- Terminal buffers do not reliably go through `FileType`, so opt them out separately.
+  vim.api.nvim_create_autocmd('TermOpen', {
+    desc = 'Disable spell checking in terminal buffers',
+    group = spell_group,
+    callback = function() vim.opt_local.spell = false end,
+  })
+
+  -- [[ Spell Highlights ]]
+  -- Most colorschemes paint the spell groups in the exact same colours as the LSP
+  -- diagnostic underlines, so a typo and a compiler error look identical. Give spelling
+  -- its own visual language instead: the purple/magenta family, which no diagnostic
+  -- level uses, plus a background tint on the one group that matters most.
+  --
+  -- Colour rather than underline style carries the distinction on purpose. Undercurl,
+  -- underdotted and friends need terminal support (`Smulx` in terminfo) and silently
+  -- degrade to a plain underline without it, which would put us right back into a
+  -- collision. A background tint renders everywhere.
+  local spell_highlights = {
+    -- Unrecognised word. Colour only, no background: a background here would paint over
+    -- whatever else owns the line, most visibly todo-comments' TODO/FIXME/NOTE keywords.
+    SpellBad = { sp = '#ff7ac8', undercurl = true, underline = true },
+    -- Word not capitalised where it should be. Quieter, it is usually a style nit.
+    SpellCap = { sp = '#d3869b', underdashed = true },
+    -- Rare word. Quieter still.
+    SpellRare = { sp = '#d3869b', underdotted = true },
+    -- Correct, but in a different region than 'spelllang' asks for.
+    SpellLocal = { sp = '#a98cc4', underdotted = true },
+  }
+
+  local function apply_spell_highlights()
+    for group, opts in pairs(spell_highlights) do
+      vim.api.nvim_set_hl(0, group, opts)
+    end
+  end
+
+  -- Loading a colorscheme resets every highlight group, so reapply ours afterwards.
+  vim.api.nvim_create_autocmd('ColorScheme', {
+    desc = 'Keep spell highlights distinct from LSP diagnostics',
+    group = spell_group,
+    callback = apply_spell_highlights,
+  })
+
+  apply_spell_highlights()
+
+  -- Spell checking is a window option, so toggle it on the current window.
+  --  Use `z=` for suggestions, `zg` to add a word to your dictionary, `]s`/`[s` to jump.
+  vim.keymap.set('n', '<leader>ts', function()
+    vim.wo.spell = not vim.wo.spell
+    vim.notify('Spell checking ' .. (vim.wo.spell and 'on (' .. vim.bo.spelllang .. ')' or 'off'))
+  end, { desc = '[T]oggle [S]pell checking' })
+
+  -- Cycle the language of the current buffer between English, German and both.
+  do
+    local spelllangs = { 'en_us,de_de', 'en_us', 'de_de' }
+    vim.keymap.set('n', '<leader>tl', function()
+      local current = vim.bo.spelllang
+      local next_index = 1
+      for i, lang in ipairs(spelllangs) do
+        if lang == current then
+          next_index = i % #spelllangs + 1
+          break
+        end
+      end
+      vim.bo.spelllang = spelllangs[next_index]
+      vim.wo.spell = true
+      vim.notify('Spell language: ' .. vim.bo.spelllang)
+    end, { desc = '[T]oggle spell [L]anguage (en/de/both)' })
+  end
 end
 
 -- ============================================================
