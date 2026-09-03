@@ -140,8 +140,9 @@ do
   -- Decrease update time
   vim.o.updatetime = 250
 
-  -- Decrease mapped sequence wait time
-  vim.o.timeoutlen = 300
+  -- Keep mapped sequences responsive without making three-key LSP mappings
+  -- like `gri` and `grd` easy to time out while using which-key.
+  vim.o.timeoutlen = 700
 
   -- Configure how new splits should be opened
   vim.o.splitright = true
@@ -658,30 +659,35 @@ do
     callback = function(event)
       local buf = event.buf
 
+      local map = function(keys, func, desc) vim.keymap.set('n', keys, func, { buffer = buf, desc = desc }) end
+
       -- Find references for the word under your cursor.
-      vim.keymap.set('n', 'grr', builtin.lsp_references, { buffer = buf, desc = '[G]oto [R]eferences' })
+      map('grr', builtin.lsp_references, '[G]oto [R]eferences')
+      map('gR', builtin.lsp_references, '[G]oto [R]eferences')
 
       -- Jump to the implementation of the word under your cursor.
       -- Useful when your language has ways of declaring types without an actual implementation.
-      vim.keymap.set('n', 'gri', builtin.lsp_implementations, { buffer = buf, desc = '[G]oto [I]mplementation' })
+      map('gri', builtin.lsp_implementations, '[G]oto [I]mplementation')
+      map('gI', builtin.lsp_implementations, '[G]oto [I]mplementation')
 
       -- Jump to the definition of the word under your cursor.
       -- This is where a variable was first declared, or where a function is defined, etc.
       -- To jump back, press <C-t>.
-      vim.keymap.set('n', 'grd', builtin.lsp_definitions, { buffer = buf, desc = '[G]oto [D]efinition' })
+      map('grd', builtin.lsp_definitions, '[G]oto [D]efinition')
+      map('gd', builtin.lsp_definitions, '[G]oto [D]efinition')
 
       -- Fuzzy find all the symbols in your current document.
       -- Symbols are things like variables, functions, types, etc.
-      vim.keymap.set('n', 'gO', builtin.lsp_document_symbols, { buffer = buf, desc = 'Open Document Symbols' })
+      map('gO', builtin.lsp_document_symbols, 'Open Document Symbols')
 
       -- Fuzzy find all the symbols in your current workspace.
       -- Similar to document symbols, except searches over your entire project.
-      vim.keymap.set('n', 'gW', builtin.lsp_dynamic_workspace_symbols, { buffer = buf, desc = 'Open Workspace Symbols' })
+      map('gW', builtin.lsp_dynamic_workspace_symbols, 'Open Workspace Symbols')
 
       -- Jump to the type of the word under your cursor.
       -- Useful when you're not sure what type a variable is and you want to see
       -- the definition of its *type*, not where it was *defined*.
-      vim.keymap.set('n', 'grt', builtin.lsp_type_definitions, { buffer = buf, desc = '[G]oto [T]ype Definition' })
+      map('grt', builtin.lsp_type_definitions, '[G]oto [T]ype Definition')
     end,
   })
 
@@ -775,6 +781,7 @@ do
       -- WARN: This is not Goto Definition, this is Goto Declaration.
       --  For example, in C this would take you to the header.
       map('grD', vim.lsp.buf.declaration, '[G]oto [D]eclaration')
+      map('gD', vim.lsp.buf.declaration, '[G]oto [D]eclaration')
 
       -- The following two autocommands are used to highlight references of the
       -- word under your cursor when your cursor rests there for a little while.
@@ -829,7 +836,7 @@ do
   --     language servers, e.g. the `stylua` formatter
   ---@type table<string, vim.lsp.Config>
   local servers = {
-    -- gopls = {},
+    gopls = {},
     --
     -- Some languages (like typescript) have entire language plugins that can be useful:
     --    https://github.com/pmizio/typescript-tools.nvim
@@ -1181,7 +1188,8 @@ do
   --  Here are some example plugins that I've included in the Kickstart repository.
   --  Uncomment any of the lines below to enable them (you will need to restart nvim).
   --
-  require 'kickstart.plugins.debug'
+  local debug_ok, debug_err = pcall(require, 'kickstart.plugins.debug')
+  if not debug_ok then vim.schedule(function() vim.notify('Debug plugin setup failed: ' .. debug_err, vim.log.levels.WARN) end) end
   require 'kickstart.plugins.indent_line'
   require 'kickstart.plugins.lint'
   require 'kickstart.plugins.autopairs'
