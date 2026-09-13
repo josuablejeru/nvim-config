@@ -18,6 +18,10 @@
       "rev": "6f793b2bcd2d35e201c09520f698bb763220908a",
       "src": "https://github.com/j-hui/fidget.nvim"
     },
+    "friendly-snippets": {
+      "rev": "b4d01b0fdf3c9a549961c2f9ffe8dc09be166219",
+      "src": "https://github.com/rafamadriz/friendly-snippets"
+    },
     "gitsigns.nvim": {
       "rev": "5be654f2232c10ddcad19c1607a67b6b4b78fc29",
       "src": "https://github.com/lewis6991/gitsigns.nvim"
@@ -96,13 +100,17 @@
       "src": "https://github.com/nvim-treesitter/nvim-treesitter",
       "version": "'main'"
     },
-    "nvim-web-devicons": {
-      "rev": "2ae6958df7ced50baac5035cec0c15799eedfbf7",
-      "src": "https://github.com/nvim-tree/nvim-web-devicons"
+    "nvim-ufo": {
+      "rev": "ab3eb124062422d276fae49e0dd63b3ad1062cfc",
+      "src": "https://github.com/kevinhwang91/nvim-ufo"
     },
     "plenary.nvim": {
       "rev": "74b06c6c75e4eeb3108ec01852001636d85a932b",
       "src": "https://github.com/nvim-lua/plenary.nvim"
+    },
+    "promise-async": {
+      "rev": "119e8961014c9bfaf1487bf3c2a393d254f337e2",
+      "src": "https://github.com/kevinhwang91/promise-async"
     },
     "telescope-fzf-native.nvim": {
       "rev": "b25b749b9db64d375d782094e2b9dce53ad53a40",
@@ -119,10 +127,6 @@
     "todo-comments.nvim": {
       "rev": "31e3c38ce9b29781e4422fc0322eb0a21f4e8668",
       "src": "https://github.com/folke/todo-comments.nvim"
-    },
-    "tokyonight.nvim": {
-      "rev": "cdc07ac78467a233fd62c493de29a17e0cf2b2b6",
-      "src": "https://github.com/folke/tokyonight.nvim"
     },
     "which-key.nvim": {
       "rev": "3aab2147e74890957785941f0c1ad87d0a44c15a",

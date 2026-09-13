@@ -470,23 +470,16 @@ do
   --
   -- We first install it from https://github.com/NMAC427/guess-indent.nvim
   -- and then call its `setup()` function to start it with default settings.
+
+  require 'helper' -- imported for gh shorthand
+
   vim.pack.add { gh 'NMAC427/guess-indent.nvim' }
   require('guess-indent').setup {}
 
-  -- Here is a more advanced configuration example that passes options to `gitsigns.nvim`
-  --
-  -- See `:help gitsigns` to understand what each configuration key does.
-  -- Adds git related signs to the gutter, as well as utilities for managing changes
+  -- Adds git related signs to the gutter, as well as utilities for managing changes.
+  -- The actual setup lives in `kickstart.plugins.gitsigns` so signs and keymaps
+  -- are configured in one place.
   vim.pack.add { gh 'lewis6991/gitsigns.nvim' }
-  require('gitsigns').setup {
-    signs = {
-      add = { text = '+' }, ---@diagnostic disable-line: missing-fields
-      change = { text = '~' }, ---@diagnostic disable-line: missing-fields
-      delete = { text = '_' }, ---@diagnostic disable-line: missing-fields
-      topdelete = { text = '‾' }, ---@diagnostic disable-line: missing-fields
-      changedelete = { text = '~' }, ---@diagnostic disable-line: missing-fields
-    },
-  }
 
   -- Useful plugin to show you pending keybinds.
   vim.pack.add { gh 'folke/which-key.nvim' }
@@ -498,31 +491,18 @@ do
     spec = {
       { '<leader>s', group = '[S]earch', mode = { 'n', 'v' } },
       { '<leader>t', group = '[T]oggle' },
-      { '<leader>h', group = 'Git [H]unk', mode = { 'n', 'v' } }, -- Enable gitsigns recommended keymaps first
+      { '<leader>h', group = 'Git [H]unk', mode = { 'n', 'v' } },
+      { '<leader>d', group = '[D]ebug' },
       { 'gr', group = 'LSP Actions', mode = { 'n' } },
     },
   }
 
   -- [[ Colorscheme ]]
-  -- You can easily change to a different colorscheme.
-  -- Change the name of the colorscheme plugin below, and then
-  -- change the command under that to load whatever the name of that colorscheme is.
-  --
-  -- If you want to see what colorschemes are already installed, you can use `:Telescope colorscheme`.
-  vim.pack.add { gh 'folke/tokyonight.nvim' }
-  ---@diagnostic disable-next-line: missing-fields
-  require('tokyonight').setup {
-    styles = {
-      comments = { italic = false }, -- Disable italics in comments
-    },
-  }
-
+  vim.o.background = 'dark'
   vim.pack.add { gh 'ellisonleao/gruvbox.nvim' }
   require('gruvbox').setup {}
 
   -- Load the colorscheme here.
-  -- Like many other themes, this one has different styles, and you could load
-  -- any other, such as 'tokyonight-storm', 'tokyonight-moon', or 'tokyonight-day'.
   vim.cmd.colorscheme 'gruvbox'
 
   -- Highlight todo, notes, etc in comments
@@ -837,13 +817,14 @@ do
   --     language servers, e.g. the `stylua` formatter
   ---@type table<string, vim.lsp.Config>
   local servers = {
+    -- [[ General web / config files ]]
     gopls = {},
-    --
-    -- Some languages (like typescript) have entire language plugins that can be useful:
-    --    https://github.com/pmizio/typescript-tools.nvim
-    --
-    -- But for many setups, the LSP (`ts_ls`) will work just fine
-    -- ts_ls = {},
+    bashls = {},
+    html = {},
+    jsonls = {},
+    taplo = {},
+    ts_ls = {},
+    yamlls = {},
 
     -- [[ C / C++ ]]
     -- NOTE: clangd only understands your build flags if it can find a compilation
@@ -948,6 +929,13 @@ do
   local ensure_installed = vim.tbl_keys(servers or {})
   vim.list_extend(ensure_installed, {
     -- You can add other tools here that you want Mason to install
+    'gofumpt',
+    'goimports',
+    'golangci-lint',
+    'markdownlint-cli2',
+    'prettier',
+    'shellcheck',
+    'shfmt',
     'stylua', -- Used to format Lua code
   })
 
@@ -960,6 +948,23 @@ do
   ensure_installed = vim.tbl_filter(function(tool) return not vim.tbl_contains(system_provided, tool) end, ensure_installed)
 
   require('mason-tool-installer').setup { ensure_installed = ensure_installed }
+
+  vim.api.nvim_create_autocmd('VimEnter', {
+    desc = 'Warn when system-provided language servers are missing',
+    group = vim.api.nvim_create_augroup('kickstart-system-lsp-check', { clear = true }),
+    callback = function()
+      local binaries = {
+        clangd = 'clangd',
+        rust_analyzer = 'rust-analyzer',
+      }
+
+      for server, binary in pairs(binaries) do
+        if vim.fn.executable(binary) == 0 then
+          vim.notify(('LSP %s is configured as system-provided, but `%s` is not on $PATH.'):format(server, binary), vim.log.levels.WARN)
+        end
+      end
+    end,
+  })
 
   for name, server in pairs(servers) do
     vim.lsp.config(name, server)
@@ -982,9 +987,22 @@ do
       local enabled_filetypes = {
         lua = true,
         python = true,
+        bash = true,
         c = true,
         cpp = true,
+        go = true,
+        html = true,
+        javascript = true,
+        javascriptreact = true,
+        json = true,
+        jsonc = true,
+        markdown = true,
         rust = true,
+        sh = true,
+        toml = true,
+        typescript = true,
+        typescriptreact = true,
+        yaml = true,
       }
       if not enabled_filetypes[vim.bo[bufnr].filetype] then return nil end
 
@@ -1003,8 +1021,21 @@ do
     formatters_by_ft = {
       -- C and Rust need no entry here: clangd and rust_analyzer both format
       -- over LSP, which `lsp_format = 'fallback'` above already uses.
+      bash = { 'shfmt' },
+      go = { 'goimports', 'gofumpt' },
+      html = { 'prettier' },
+      javascript = { 'prettier' },
+      javascriptreact = { 'prettier' },
+      json = { 'prettier' },
+      jsonc = { 'prettier' },
       lua = { 'stylua' }, -- lua_ls has formatting disabled in Section 6, so name stylua explicitly
+      markdown = { 'prettier' },
       python = { 'ruff_format' },
+      sh = { 'shfmt' },
+      toml = { 'taplo' },
+      typescript = { 'prettier' },
+      typescriptreact = { 'prettier' },
+      yaml = { 'prettier' },
       -- Conform can also run multiple formatters sequentially, e.g.
       -- python = { 'ruff_organize_imports', 'ruff_format' },
       --
@@ -1047,8 +1078,8 @@ do
   --    See the README about individual language/framework/plugin snippets:
   --    https://github.com/rafamadriz/friendly-snippets
   --
-  -- vim.pack.add { gh 'rafamadriz/friendly-snippets' }
-  -- require('luasnip.loaders.from_vscode').lazy_load()
+  vim.pack.add { gh 'rafamadriz/friendly-snippets' }
+  require('luasnip.loaders.from_vscode').lazy_load()
 
   -- [[ Autocomplete Engine ]]
   vim.pack.add { { src = gh 'saghen/blink.cmp', version = vim.version.range '1.*' } }
@@ -1115,7 +1146,7 @@ end
 
 -- ============================================================
 -- SECTION 9: TREESITTER
--- Parser installation, syntax highlighting, folds, indentation
+-- Parser installation, syntax highlighting, indentation
 -- ============================================================
 do
   -- [[ Configure Treesitter ]]
@@ -1131,7 +1162,14 @@ do
     'bash',
     'c',
     'diff',
+    'go',
+    'gomod',
+    'gosum',
+    'gowork',
     'html',
+    'javascript',
+    'jsdoc',
+    'json',
     'lua',
     'luadoc',
     'markdown',
@@ -1139,9 +1177,12 @@ do
     'python',
     'query',
     'rust',
+    'tsx',
     'toml',
+    'typescript',
     'vim',
     'vimdoc',
+    'yaml',
   }
   require('nvim-treesitter').install(parsers)
 
@@ -1152,12 +1193,6 @@ do
     if not vim.treesitter.language.add(language) then return end
     -- Enable syntax highlighting and other treesitter features
     vim.treesitter.start(buf, language)
-
-    -- Enable treesitter based folds
-    -- For more info on folds see `:help folds`
-    -- vim.wo.foldexpr = 'v:lua.vim.treesitter.foldexpr()'
-    -- vim.wo.foldmethod = 'expr'
-
     -- Check if treesitter indentation is available for this language, and if so enable it
     -- in case there is no indent query, the indentexpr will fallback to the vim's built in one
     local has_indent_query = vim.treesitter.query.get(language, 'indents') ~= nil
@@ -1210,12 +1245,13 @@ do
   require 'kickstart.plugins.lint'
   require 'kickstart.plugins.autopairs'
   require 'kickstart.plugins.neo-tree'
-  require 'kickstart.plugins.gitsigns' -- adds gitsigns recommended keymaps
+  require 'kickstart.plugins.gitsigns'
+  require 'kickstart.plugins.folding'
 
   -- NOTE: You can add your own plugins, configuration, etc from `lua/custom/plugins/*.lua`
   --
   --  Uncomment the following line and add your plugins to `lua/custom/plugins/*.lua` to get going.
-  -- require 'custom.plugins'
+  require 'custom.plugins'
 end
 
 -- The line beneath this is called `modeline`. See `:help modeline`
